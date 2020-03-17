@@ -1,17 +1,18 @@
 import numpy as np
 
-data = np.array([[1, 0], [1, 0]])
-label_pos = 1
-features_pos = [0]
-
 
 def relu(x): 
     return max(0, x)
 
 
+def derivative_relu(x): 
+    return x if x > 0 else 0
+
+
 def se(y_true: float, y_pred: float):
     """Computes the Squared Error"""
     return (y_true - y_pred) ** 2
+
 
 loss_funcs = {
     "se": se,
@@ -19,6 +20,10 @@ loss_funcs = {
 
 activation_funcs = {
     "relu": relu,
+}
+
+derivative_funcs = {
+    "relu": derivative_relu, 
 }
 
 weights_initialization = {
@@ -33,7 +38,7 @@ def forward_propagation(
     sample: np.ndarray, 
     Ws: np.ndarray, 
     activations: tuple, 
-    loss_func: callable
+    loss_f: callable
 ) -> tuple:
     """Compute a forward pass for a specific sample. 
 
@@ -49,10 +54,10 @@ def forward_propagation(
     Ws: Iterable[numpy.ndarray]
         Iterable with the weight matrices to apply in the pre-activation
         computation. 
-    activations: Iterable[callable]
+    activations: Iterable[str]
         Iterable with the name of the activation functions to use 
         for each layer.  
-    loss_func: str 
+    loss_f: str 
         Loss function to compute in the end of the forward pass.
 
     Returns
@@ -66,20 +71,31 @@ def forward_propagation(
 
     Zs = [X]
     df_dZs, df_dWs = [], []
+    activation_fs = list(map(lambda name: activation_funcs[name], activations))
+    derivative_fs = list(map(lambda name: derivative_funcs[name], activations))
 
-    for i, l_size in enumerate(architecture[:-1]): 
-        next_layer = i-1
+    for i, W in enumerate(Ws): 
+        activation_func = activations[i]
 
-        Z, df_dz, df_dW = forward_propagation(Zs[i], Ws[i], activations[i])
+        # Pre-activation function
+        Z_in = W * Zs[i]
+        # Activation Function
+        Z = np.apply_along_axis(activation_fs[i], 1, Z_in)
+        # Local derivatives
+        df_dZ_in = np.apply_along_axis(derivative_fs[i], 1, Z)
+        df_dZ = df_dZ_in * W
+        df_dW = df_dZ_in * Zs[i]
+
         Zs.append(Z)
         # Local derivative with the contribution of each layer to to the 
         # output of the following layer
-        df_dZs.append(df_dz)
+        df_dZs.append(df_dZ)
         # Local derivative with the contribution of the weights to the 
         # output of the following layer
         df_dWs.append(df_dW)
 
-    loss = loss_fs[loss_func](y_true, Zs[-1])
+    loss = loss_funcs[loss_f](y_true, Zs[-1])
+
     metadata = {
         # Outputs
         "Zs": Zs, 
@@ -145,15 +161,23 @@ def train_NN(data: np.ndarray, architecture: tuple, activations: tuple, loss_fun
             prev_layer = architecture[i-1]
 
             W_size = (layer, prev_layer)
-            W = weight_init_f(W_size)
+            W = weight_init_f(*W_size)
             Ws.append(W)
 
         return Ws
 
-    n_samples, n_features = data.shape
+    n_samples, _ = data.shape
     Ws = init_weights()
 
     for i in range(n_samples):
         sample = data[i, :]
         loss, metadata = forward_propagation(sample, Ws, activations, loss_func)
-        print(loss)
+
+    print(metadata)
+    
+
+data = np.array([[1, 0], [1, 0]])
+label_pos = 1
+features_pos = [0]
+
+train_NN(data, (1, 2, 1), ("relu", "relu"), "se")
